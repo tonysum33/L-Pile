@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot, ReferenceLine, ReferenceArea } from 'recharts';
-import { Calculator, Printer, Info, Settings2, Download, RefreshCcw, ZoomIn, FileSpreadsheet } from 'lucide-react';
+import { Calculator, Printer, Info, Settings2, Download, RefreshCcw, ZoomIn, FileSpreadsheet, PanelLeftOpen, PanelLeftClose, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 
@@ -224,6 +224,7 @@ export default function App() {
   const [isFixed, setIsFixed] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [isPdfMode, setIsPdfMode] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
 
   // Zoom state
   const [zoomDomain, setZoomDomain] = useState<[number, number] | null>(null);
@@ -433,8 +434,15 @@ export default function App() {
       {/* Header */}
       {!isPdfMode && (
         <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="no-print p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+                title={isSidebarOpen ? "隱藏參數" : "顯示參數"}
+              >
+                {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
+              </button>
               <div className="bg-blue-600 p-2 rounded-lg">
                 <Calculator className="w-5 h-5 text-white" />
               </div>
@@ -465,60 +473,85 @@ export default function App() {
         </header>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col lg:flex-row gap-8">
 
-          {/* Sidebar - Inputs */}
+          {/* Sidebar - Inputs & Summary (輸出參數) */}
           {!isPdfMode && (
-            <div className="lg:col-span-3 space-y-6 no-print">
-              {/* Pile Parameters */}
-              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center">
-                    <Settings2 className="w-4 h-4 mr-2 text-blue-600" />
-                    樁身參數
+            <div className={`transition-all duration-300 ease-in-out overflow-hidden no-print flex-shrink-0 ${isSidebarOpen ? 'w-full lg:w-72 opacity-100' : 'w-0 opacity-0'}`}>
+              <div className="space-y-6 w-72">
+                {/* Summary Results (輸出參數) */}
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                  <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center">
+                    <Calculator className="w-4 h-4 mr-2 text-blue-600" />
+                    輸出分析摘要
                   </h2>
-                  <label className="flex items-center cursor-pointer">
-                    <span className="text-[10px] text-slate-400 mr-2">手動輸入</span>
-                    <input
-                      type="checkbox"
-                      checked={isManualPile}
-                      onChange={e => setIsManualPile(e.target.checked)}
-                      className="w-3 h-3 text-blue-600 rounded focus:ring-blue-500"
-                    />
-                  </label>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">樁長 L (m)</label>
-                    <input type="number" value={L} onChange={e => setL(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">樁徑 D (m)</label>
-                    <input type="number" step="0.1" value={D} onChange={e => setD(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">樁頂高出地表 h (m)</label>
-                    <input type="number" step="0.1" value={h} onChange={e => setH_height(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">慣性矩 I (m⁴)</label>
-                    {isManualPile ? (
-                      <input type="number" step="0.0001" value={I} onChange={e => setI(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
-                    ) : (
-                      <div className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-md text-sm text-slate-500 cursor-not-allowed">
-                        {I}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">斷面積 Ag (m²)</label>
-                    <div className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-md text-sm text-slate-500 cursor-not-allowed">
-                      {results.Ag_m2.toFixed(4)}
+                  <div className="space-y-3">
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                      <p className="text-[10px] font-medium text-slate-500 uppercase">特徵長度 β</p>
+                      <p className="text-base font-bold text-slate-900">{results.beta.toFixed(4)} <span className="text-[10px] font-normal text-slate-500">m⁻¹</span></p>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                      <p className="text-[10px] font-medium text-slate-500 uppercase">βL ({results.isLongPile ? '長樁' : '短樁'})</p>
+                      <p className="text-base font-bold text-slate-900">{results.betaL.toFixed(2)}</p>
+                    </div>
+                    <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                      <p className="text-[10px] font-medium text-blue-600 uppercase">最大變位 y_max</p>
+                      <p className="text-base font-bold text-blue-700">{results.ymax.toFixed(2)} <span className="text-[10px] font-normal text-blue-500">mm</span></p>
+                    </div>
+                    <div className="bg-rose-50/50 p-3 rounded-lg border border-rose-100">
+                      <p className="text-[10px] font-medium text-rose-600 uppercase">最大彎矩 M_max</p>
+                      <p className="text-base font-bold text-rose-700">{Math.abs(results.maxM).toFixed(1)} <span className="text-[10px] font-normal text-rose-500">T-m</span></p>
+                    </div>
+                    <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-100">
+                      <p className="text-[10px] font-medium text-emerald-600 uppercase">最大剪力 V_max</p>
+                      <p className="text-base font-bold text-emerald-700">{Math.abs(results.maxV).toFixed(1)} <span className="text-[10px] font-normal text-emerald-500">T</span></p>
                     </div>
                   </div>
                 </div>
-              </div>
+
+                {/* Pile Parameters */}
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center">
+                      <Settings2 className="w-4 h-4 mr-2 text-blue-500" />
+                      輸入：樁身參數
+                    </h2>
+                    <label className="flex items-center cursor-pointer">
+                      <span className="text-[10px] text-slate-400 mr-2">手動</span>
+                      <input
+                        type="checkbox"
+                        checked={isManualPile}
+                        onChange={e => setIsManualPile(e.target.checked)}
+                        className="w-3 h-3 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                    </label>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[10px] font-medium text-slate-500 mb-1">樁長 L (m)</label>
+                      <input type="number" value={L} onChange={e => setL(Number(e.target.value))} className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:ring-1 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-medium text-slate-500 mb-1">樁徑 D (m)</label>
+                      <input type="number" step="0.1" value={D} onChange={e => setD(Number(e.target.value))} className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:ring-1 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-medium text-slate-500 mb-1">樁頂高出地表 h (m)</label>
+                      <input type="number" step="0.1" value={h} onChange={e => setH_height(Number(e.target.value))} className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:ring-1 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-medium text-slate-500 mb-1">慣性矩 I (m⁴)</label>
+                      {isManualPile ? (
+                        <input type="number" step="0.0001" value={I} onChange={e => setI(Number(e.target.value))} className="w-full px-3 py-1.5 border border-slate-300 rounded-md text-xs outline-none focus:ring-1 focus:ring-blue-500" />
+                      ) : (
+                        <div className="w-full px-3 py-1.5 border border-slate-200 bg-slate-50 rounded-md text-xs text-slate-500 cursor-not-allowed">
+                          {I}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
               {/* Material Parameters */}
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -632,10 +665,11 @@ export default function App() {
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
           {/* Main Content - Results & Charts (Wrapped for PDF Export) */}
-          <div className={`${isPdfMode ? 'w-[1200px] mx-auto bg-white p-12' : 'lg:col-span-9'} space-y-8`} ref={reportRef}>
+          <div className={`${isPdfMode ? 'w-[1200px] mx-auto bg-white p-12' : 'flex-1 min-w-0'} space-y-8`} ref={reportRef}>
 
             {/* PDF Report Header (Only visible in PDF) */}
             {isPdfMode && (
@@ -666,40 +700,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <p className="text-xs font-medium text-slate-500 mb-1">特徵長度 β</p>
-                <p className="text-2xl font-bold text-slate-900">{results.beta.toFixed(4)} <span className="text-sm font-normal text-slate-500">m⁻¹</span></p>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <p className="text-xs font-medium text-slate-500 mb-1">βL</p>
-                <div className="flex items-baseline space-x-2">
-                  <p className="text-2xl font-bold text-slate-900">{results.betaL.toFixed(2)}</p>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${results.isLongPile ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {results.isLongPile ? '長樁' : '短樁'}
-                  </span>
-                </div>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <p className="text-xs font-medium text-slate-500 mb-1">樁頭最大變位 y_max</p>
-                <p className="text-2xl font-bold text-blue-600">{results.ymax.toFixed(2)} <span className="text-sm font-normal text-slate-500">mm</span></p>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <p className="text-xs font-medium text-slate-500 mb-1">最大彎矩 M_max</p>
-                <div className="flex items-baseline space-x-2">
-                  <p className="text-2xl font-bold text-rose-600">{Math.abs(results.maxM).toFixed(1)} <span className="text-sm font-normal text-slate-500">T-m</span></p>
-                  <span className="text-xs font-medium text-slate-500">@ {results.maxMDepth.toFixed(2)} m</span>
-                </div>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <p className="text-xs font-medium text-slate-500 mb-1">最大剪力 V_max</p>
-                <div className="flex items-baseline space-x-2">
-                  <p className="text-2xl font-bold text-emerald-600">{Math.abs(results.maxV).toFixed(1)} <span className="text-sm font-normal text-slate-500">T</span></p>
-                  <span className="text-xs font-medium text-slate-500">@ {results.maxVDepth.toFixed(2)} m</span>
-                </div>
-              </div>
-            </div>
+
 
             {/* Charts Header with Reset Zoom */}
             <div className="flex items-center justify-between mb-4">
@@ -720,11 +721,11 @@ export default function App() {
             </div>
 
             {/* Charts Grid */}
-            <div className={`grid gap-6 print-break-inside-avoid ${isPdfMode ? 'grid-cols-2' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4'}`}>
+            <div className={`grid gap-4 print-break-inside-avoid ${isPdfMode ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4'}`}>
 
               {/* Deflection Chart */}
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-[500px] flex flex-col">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">變位圖</h3>
+                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">變位圖 (mm)</h3>
                 <div className="flex-1 w-full cursor-crosshair">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -794,12 +795,12 @@ export default function App() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="text-center text-xs text-slate-500 mt-2">變位 y</p>
+                <p className="text-center text-xs text-slate-500 mt-2">變位 y (mm)</p>
               </div>
 
               {/* Moment Chart */}
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-[500px] flex flex-col">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">彎矩圖</h3>
+                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">彎矩圖 (T-m)</h3>
                 <div className="flex-1 w-full cursor-crosshair">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -869,12 +870,12 @@ export default function App() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="text-center text-xs text-slate-500 mt-2">彎矩 M</p>
+                <p className="text-center text-xs text-slate-500 mt-2">彎矩 M (T-m)</p>
               </div>
 
               {/* Shear Chart */}
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-[500px] flex flex-col">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">剪力圖</h3>
+                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">剪力圖 (T)</h3>
                 <div className="flex-1 w-full cursor-crosshair">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -944,12 +945,12 @@ export default function App() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="text-center text-xs text-slate-500 mt-2">剪力 V</p>
+                <p className="text-center text-xs text-slate-500 mt-2">剪力 V (T)</p>
               </div>
 
               {/* Reinforcement Envelope Chart */}
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-[500px] flex flex-col">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">配筋包絡線</h3>
+                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">配筋包絡線 (cm²)</h3>
                 <div className="flex-1 w-full cursor-crosshair">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -962,9 +963,9 @@ export default function App() {
                       onMouseUp={handleZoom}
                     >
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={true} vertical={true} />
-                      <XAxis type="number" dataKey="As" name="需求 As" unit=" cm²" domain={[0, 'auto']} tick={{ fontSize: 12 }} />
+                      <XAxis type="number" dataKey="As" name="需求 As" domain={[0, 'auto']} tick={{ fontSize: 12 }} />
                       {/* 移除 reversed={true} 以將深度 0 (樁頭) 置於下方，對調最淺與最深位置 */}
-                      <YAxis type="number" dataKey="depth" name="深度" unit=" m" domain={zoomDomain || [0, L + h]} tickCount={11} tick={{ fontSize: 12 }} allowDataOverflow={true} />
+                      <YAxis type="number" dataKey="depth" name="深度" domain={zoomDomain || [0, L + h]} tickCount={11} tick={{ fontSize: 12 }} allowDataOverflow={true} />
                       <Tooltip content={<CustomTooltip />} />
                       <ReferenceLine x={results.As_min} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'As,min', fill: '#ef4444', fontSize: 12, offset: 10 }} />
                       {h > 0 && (
@@ -977,7 +978,7 @@ export default function App() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="text-center text-xs text-slate-500 mt-2">需求鋼筋面積 As</p>
+                <p className="text-center text-xs text-slate-500 mt-2">需求鋼筋面積 As (cm²)</p>
               </div>
 
             </div>
