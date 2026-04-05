@@ -42,10 +42,10 @@ function calculatePile(L: number, D: number, E_t_m2: number, I: number, ks: numb
   let M0 = 0;
 
   if (isFixed) {
-    // 固定頭且考慮地上高度 h 時，地表處的等效彎矩
+    // 樁頭固定且考慮地上高度 h 時，地表處的等效彎矩
     M0 = (H / 2) * (h - 1 / beta);
   } else {
-    // 自由頭，地表處的等效彎矩 = 樁頭彎矩 + 水平力產生的力矩
+    // 樁頭自由，地表處的等效彎矩 = 樁頭彎矩 + 水平力產生的力矩
     M0 = M + H * h;
   }
 
@@ -638,13 +638,13 @@ export default function App() {
                         onClick={() => setIsFixed(false)}
                         className={`flex-1 text-sm py-1.5 rounded-md font-medium transition-all ${!isFixed ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        自由頭
+                        樁頭自由
                       </button>
                       <button
                         onClick={() => setIsFixed(true)}
                         className={`flex-1 text-sm py-1.5 rounded-md font-medium transition-all ${isFixed ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        固定頭
+                        樁頭固定
                       </button>
                     </div>
                   </div>
@@ -692,7 +692,7 @@ export default function App() {
                     <div className="flex justify-between"><span className="text-slate-500">水平力 H:</span> <span className="font-semibold text-slate-900">{H} T</span></div>
                     <div className="flex justify-between"><span className="text-slate-500">彎矩 M:</span> <span className="font-semibold text-slate-900">{M} T-m</span></div>
                     <div className="flex justify-between"><span className="text-slate-500">載重因數:</span> <span className="font-semibold text-slate-900">{loadFactor}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">樁頭條件:</span> <span className="font-semibold text-slate-900">{isFixed ? '固定頭' : '自由頭'}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">樁頭條件:</span> <span className="font-semibold text-slate-900">{isFixed ? '樁頭固定' : '樁頭自由'}</span></div>
                     <div className="flex justify-between"><span className="text-slate-500">彈性模數 E:</span> <span className="font-semibold text-slate-900">{E} T/m²</span></div>
                     <div className="flex justify-between"><span className="text-slate-500">慣性矩 I:</span> <span className="font-semibold text-slate-900">{I} m⁴</span></div>
                   </div>
