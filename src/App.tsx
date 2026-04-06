@@ -347,7 +347,7 @@ export default function App() {
           heightLeft -= pdfHeight;
         }
 
-        pdf.save('基樁側向承載力分析v1報告.pdf');
+        pdf.save('基樁側向承載力分析報告.pdf');
       } catch (error) {
         console.error("PDF Export failed", error);
         alert("匯出 PDF 失敗，請稍後再試。");
@@ -675,7 +675,7 @@ export default function App() {
             {isPdfMode && (
               <div className="mb-8">
                 <div className="text-center mb-8">
-                  <h1 className="text-4xl font-bold text-slate-900 mb-2">基樁側向承載力分析v1報告</h1>
+                  <h1 className="text-4xl font-bold text-slate-900 mb-2">基樁側向承載力分析報告</h1>
                   <p className="text-lg text-slate-500">Chang's Formula Analysis Report</p>
                   <p className="text-sm text-slate-400 mt-2">分析日期: {new Date().toLocaleDateString()}</p>
                 </div>
