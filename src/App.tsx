@@ -280,72 +280,84 @@ export default function App() {
   }, [nValue, D, isManualSoil]);
 
   const reportRef = useRef<HTMLDivElement>(null);
+  const pdfPage1Ref = useRef<HTMLDivElement>(null);
+  const pdfPage2Ref = useRef<HTMLDivElement>(null);
 
   const results = useMemo(() => calculatePile(L, D, E, I, ks, H, M, h, isFixed, fy, loadFactor, fc), [L, D, E, I, ks, H, M, h, isFixed, fy, loadFactor, fc]);
 
   const handleExportPDF = async () => {
-    if (!reportRef.current) return;
     setIsExporting(true);
     setIsPdfMode(true);
 
     // Wait for React to render the PDF mode layout
     setTimeout(async () => {
       try {
-        const element = reportRef.current;
-        if (!element) return;
+        const page1Element = pdfPage1Ref.current;
+        const page2Element = pdfPage2Ref.current;
+        if (!page1Element || !page2Element) return;
 
-        const dataUrl = await toPng(element, {
-          quality: 0.95,
-          backgroundColor: '#ffffff',
-          pixelRatio: 2, // Higher resolution for crisp charts
-          style: {
-            height: 'auto',
-          }
-        });
-
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const margin = 15; // 15mm margin
-        const pdfWidth = pdf.internal.pageSize.getWidth() - 2 * margin;
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const pdfHeight = pageHeight - 2 * margin;
-
-        const img = new Image();
-        img.src = dataUrl;
-        await new Promise(resolve => img.onload = resolve);
-
-        const imgWidth = img.width;
-        const imgHeight = img.height;
-        const ratio = pdfWidth / imgWidth;
-        const scaledHeight = imgHeight * ratio;
-        const totalPages = Math.ceil(scaledHeight / pdfHeight);
-
-        const drawMargins = (pageNumber: number) => {
-          pdf.setFillColor(255, 255, 255);
-          pdf.rect(0, 0, pdf.internal.pageSize.getWidth(), margin, 'F'); // Top margin
-          pdf.rect(0, pageHeight - margin, pdf.internal.pageSize.getWidth(), margin, 'F'); // Bottom margin
-
-          // Add page number
-          pdf.setFontSize(10);
-          pdf.setTextColor(150);
-          pdf.text(`Page ${pageNumber} of ${totalPages}`, pdf.internal.pageSize.getWidth() / 2, pageHeight - 6, { align: 'center' });
+        const capturePage = async (element: HTMLDivElement) => {
+          const exportWidth = element.scrollWidth;
+          const exportHeight = element.scrollHeight;
+          return toPng(element, {
+            quality: 0.95,
+            backgroundColor: '#ffffff',
+            pixelRatio: 2,
+            width: exportWidth,
+            height: exportHeight,
+            style: {
+              width: `${exportWidth}px`,
+              height: `${exportHeight}px`,
+              margin: '0',
+              overflow: 'hidden',
+              boxSizing: 'border-box',
+            }
+          });
         };
 
-        let heightLeft = scaledHeight;
-        let position = margin;
-        let currentPage = 1;
+        const [page1DataUrl, page2DataUrl] = await Promise.all([
+          capturePage(page1Element),
+          capturePage(page2Element)
+        ]);
 
-        pdf.addImage(dataUrl, 'PNG', margin, position, pdfWidth, scaledHeight);
-        drawMargins(currentPage);
-        heightLeft -= pdfHeight;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth();   // 210mm
+        const pageHeight = pdf.internal.pageSize.getHeight(); // 297mm
+        const margin = 10; // 10mm margin each side
+        const pdfContentWidth = pageWidth - 2 * margin;       // 190mm
+        const pdfContentHeight = pageHeight - 2 * margin;     // 277mm
 
-        while (heightLeft > 0) {
-          position = position - pdfHeight; // Shift image up by one page height
-          pdf.addPage();
-          currentPage++;
-          pdf.addImage(dataUrl, 'PNG', margin, position, pdfWidth, scaledHeight);
-          drawMargins(currentPage);
-          heightLeft -= pdfHeight;
-        }
+        const loadImage = async (src: string) => {
+          const img = new Image();
+          img.src = src;
+          await new Promise(resolve => {
+            img.onload = resolve;
+          });
+          return img;
+        };
+
+        const drawPageNumber = (pageNumber: number) => {
+          pdf.setFillColor(255, 255, 255);
+          pdf.rect(0, pageHeight - margin, pageWidth, margin, 'F');
+          pdf.setFontSize(9);
+          pdf.setTextColor(120);
+          pdf.text(`第 ${pageNumber} 頁 / 共 2 頁`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+        };
+
+        const addPageImage = async (dataUrl: string, pageNumber: number) => {
+          const img = await loadImage(dataUrl);
+          const scale = Math.min(pdfContentWidth / img.width, pdfContentHeight / img.height);
+          const renderWidth = img.width * scale;
+          const renderHeight = img.height * scale;
+          const x = margin + (pdfContentWidth - renderWidth) / 2;
+          const y = margin;
+          pdf.addImage(dataUrl, 'PNG', x, y, renderWidth, renderHeight);
+          drawPageNumber(pageNumber);
+        };
+
+        await addPageImage(page1DataUrl, 1);
+        pdf.addPage();
+        await addPageImage(page2DataUrl, 2);
 
         pdf.save('基樁側向承載力分析報告.pdf');
       } catch (error) {
@@ -359,7 +371,7 @@ export default function App() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Depth', 'Moment Mu', 'Required As', 'Shear Vu', 'Capacity phiVc', 'D/C Ratio', 'Note'];
+    const headers = ['Depth', 'Deflection y', 'Moment Mu', 'Required As', 'Shear Vu', 'Capacity phiVc', 'D/C Ratio', 'Note'];
 
     // Combine critical sections and reinforcement table
     const csvRows = [];
@@ -370,6 +382,7 @@ export default function App() {
       const ratio = Vu / sec.Vc;
       csvRows.push([
         sec.depth.toFixed(2),
+        (results.data.find(d => Math.abs(d.depth - sec.depth) < 0.01)?.y ?? 0).toFixed(2),
         Math.abs(sec.m * loadFactor).toFixed(2),
         sec.As.toFixed(2),
         Vu.toFixed(2),
@@ -380,7 +393,7 @@ export default function App() {
     });
 
     // Add a separator row
-    csvRows.push(['---', '---', '---', '---', '---', '---', '---']);
+    csvRows.push(['---', '---', '---', '---', '---', '---', '---', '---']);
 
     // Add Full Profile
     results.reinforcementTable.forEach(pt => {
@@ -388,6 +401,7 @@ export default function App() {
       const ratio = Vu / pt.Vc;
       csvRows.push([
         pt.depth.toFixed(2),
+        pt.y.toFixed(2),
         Math.abs(pt.m * loadFactor).toFixed(2),
         pt.As.toFixed(2),
         Vu.toFixed(2),
@@ -480,36 +494,6 @@ export default function App() {
           {!isPdfMode && (
             <div className={`transition-all duration-300 ease-in-out overflow-hidden no-print flex-shrink-0 ${isSidebarOpen ? 'w-full lg:w-72 opacity-100' : 'w-0 opacity-0'}`}>
               <div className="space-y-6 w-72">
-                {/* Summary Results (輸出參數) */}
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                  <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center">
-                    <Calculator className="w-4 h-4 mr-2 text-blue-600" />
-                    輸出分析摘要
-                  </h2>
-                  <div className="space-y-3">
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                      <p className="text-[10px] font-medium text-slate-500 uppercase">特徵長度 β</p>
-                      <p className="text-base font-bold text-slate-900">{results.beta.toFixed(4)} <span className="text-[10px] font-normal text-slate-500">m⁻¹</span></p>
-                    </div>
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                      <p className="text-[10px] font-medium text-slate-500 uppercase">βL ({results.isLongPile ? '長樁' : '短樁'})</p>
-                      <p className="text-base font-bold text-slate-900">{results.betaL.toFixed(2)}</p>
-                    </div>
-                    <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                      <p className="text-[10px] font-medium text-blue-600 uppercase">最大變位 y_max</p>
-                      <p className="text-base font-bold text-blue-700">{results.ymax.toFixed(2)} <span className="text-[10px] font-normal text-blue-500">mm</span></p>
-                    </div>
-                    <div className="bg-rose-50/50 p-3 rounded-lg border border-rose-100">
-                      <p className="text-[10px] font-medium text-rose-600 uppercase">最大彎矩 M_max</p>
-                      <p className="text-base font-bold text-rose-700">{Math.abs(results.maxM).toFixed(1)} <span className="text-[10px] font-normal text-rose-500">T-m</span></p>
-                    </div>
-                    <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-100">
-                      <p className="text-[10px] font-medium text-emerald-600 uppercase">最大剪力 V_max</p>
-                      <p className="text-base font-bold text-emerald-700">{Math.abs(results.maxV).toFixed(1)} <span className="text-[10px] font-normal text-emerald-500">T</span></p>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Pile Parameters */}
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
@@ -669,33 +653,92 @@ export default function App() {
         )}
 
           {/* Main Content - Results & Charts (Wrapped for PDF Export) */}
-          <div className={`${isPdfMode ? 'w-[1200px] mx-auto bg-white p-12' : 'flex-1 min-w-0'} space-y-8`} ref={reportRef}>
+          <div
+            className={`${isPdfMode ? 'w-[794px] bg-white p-8 overflow-hidden' : 'flex-1 min-w-0'} space-y-8`}
+            ref={reportRef}
+          >
 
+            <div ref={isPdfMode ? pdfPage1Ref : undefined} className={isPdfMode ? 'space-y-8' : ''}>
             {/* PDF Report Header (Only visible in PDF) */}
             {isPdfMode && (
-              <div className="mb-8">
-                <div className="text-center mb-8">
-                  <h1 className="text-4xl font-bold text-slate-900 mb-2">基樁側向承載力分析報告</h1>
-                  <p className="text-lg text-slate-500">Chang's Formula Analysis Report</p>
-                  <p className="text-sm text-slate-400 mt-2">分析日期: {new Date().toLocaleDateString()}</p>
-                </div>
-
-                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-8">
-                  <h2 className="text-xl font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">輸入參數</h2>
-                  <div className="grid grid-cols-3 gap-y-4 gap-x-8 text-base">
-                    <div className="flex justify-between"><span className="text-slate-500">樁長 L:</span> <span className="font-semibold text-slate-900">{L} m</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">樁徑 D:</span> <span className="font-semibold text-slate-900">{D} m</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">樁頂高出地表 h:</span> <span className="font-semibold text-slate-900">{h} m</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">混凝土強度 fc':</span> <span className="font-semibold text-slate-900">{fc} kgf/cm²</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">鋼筋降伏強度 fy:</span> <span className="font-semibold text-slate-900">{fy} kgf/cm²</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">地盤反應係數 k_s:</span> <span className="font-semibold text-slate-900">{ks} T/m³</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">水平力 H:</span> <span className="font-semibold text-slate-900">{H} T</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">彎矩 M:</span> <span className="font-semibold text-slate-900">{M} T-m</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">載重因數:</span> <span className="font-semibold text-slate-900">{loadFactor}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">樁頭條件:</span> <span className="font-semibold text-slate-900">{isFixed ? '樁頭固定' : '樁頭自由'}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">彈性模數 E:</span> <span className="font-semibold text-slate-900">{E} T/m²</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">慣性矩 I:</span> <span className="font-semibold text-slate-900">{I} m⁴</span></div>
+              <div className="mb-8 font-serif" style={{ fontFamily: '"Times New Roman", PMingLiU, serif' }}>
+                <div className="border-4 border-gray-900 p-8 mb-8">
+                  <div className="text-center mb-10 border-b-2 border-gray-900 pb-6">
+                    <h1 className="text-4xl font-bold text-gray-900 mb-3 tracking-widest">結構計算書</h1>
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">基樁側向承載力分析 (Chang's Formula)</h2>
+                    <p className="text-base text-gray-600">Pile Lateral Bearing Capacity Analysis Report</p>
                   </div>
+
+                  <table className="w-full text-base mb-6 border-collapse border border-gray-900">
+                    <tbody>
+                      <tr>
+                        <td className="border border-gray-900 p-3 font-bold bg-gray-100 w-1/4">專案名稱</td>
+                        <td className="border border-gray-900 p-3 w-1/4">基樁工程分析</td>
+                        <td className="border border-gray-900 p-3 font-bold bg-gray-100 w-1/4">日期</td>
+                        <td className="border border-gray-900 p-3 w-1/4">{new Date().toLocaleDateString('zh-TW')}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-gray-900 p-3 font-bold bg-gray-100">設計者</td>
+                        <td className="border border-gray-900 p-3"></td>
+                        <td className="border border-gray-900 p-3 font-bold bg-gray-100">檢核者</td>
+                        <td className="border border-gray-900 p-3"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <h3 className="text-xl font-bold text-gray-900 mb-3 mt-8 border-l-4 border-gray-900 pl-3">一、設計參數彙整表</h3>
+                  <table className="w-full text-sm border-collapse border border-gray-900 text-center">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="border border-gray-900 p-2" colSpan={2}>幾何與材料參數</th>
+                        <th className="border border-gray-900 p-2" colSpan={2}>載重與地盤參數</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">樁長 L</td>
+                        <td className="border border-gray-900 p-2">{L} <span className="text-gray-500 text-xs">m</span></td>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">樁頭條件</td>
+                        <td className="border border-gray-900 p-2">{isFixed ? '固定 (Fixed)' : '自由 (Free)'}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">樁徑 D</td>
+                        <td className="border border-gray-900 p-2">{D} <span className="text-gray-500 text-xs">m</span></td>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">水平力 H</td>
+                        <td className="border border-gray-900 p-2">{H} <span className="text-gray-500 text-xs">T</span></td>
+                      </tr>
+                      <tr>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">高出地表 h</td>
+                        <td className="border border-gray-900 p-2">{h} <span className="text-gray-500 text-xs">m</span></td>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">彎矩 M</td>
+                        <td className="border border-gray-900 p-2">{M} <span className="text-gray-500 text-xs">T-m</span></td>
+                      </tr>
+                      <tr>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">混凝土 fc'</td>
+                        <td className="border border-gray-900 p-2">{fc} <span className="text-gray-500 text-xs">kgf/cm²</span></td>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">載重因數</td>
+                        <td className="border border-gray-900 p-2">{loadFactor}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">鋼筋 fy</td>
+                        <td className="border border-gray-900 p-2">{fy} <span className="text-gray-500 text-xs">kgf/cm²</span></td>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">地盤係數 ks</td>
+                        <td className="border border-gray-900 p-2">{ks} <span className="text-gray-500 text-xs">T/m³</span></td>
+                      </tr>
+                      <tr>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">彈性模數 E</td>
+                        <td className="border border-gray-900 p-2">{E.toLocaleString()} <span className="text-gray-500 text-xs">T/m²</span></td>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">特徵長度 β</td>
+                        <td className="border border-gray-900 p-2">{results.beta.toFixed(4)} <span className="text-gray-500 text-xs">m⁻¹</span></td>
+                      </tr>
+                      <tr>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">慣性矩 I</td>
+                        <td className="border border-gray-900 p-2">{I} <span className="text-gray-500 text-xs">m⁴</span></td>
+                        <td className="border border-gray-900 p-2 font-bold bg-gray-50">βL 與長樁判定</td>
+                        <td className="border border-gray-900 p-2">{results.betaL.toFixed(2)} ({results.isLongPile ? '長樁' : '短樁'})</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -704,12 +747,12 @@ export default function App() {
 
             {/* Charts Header with Reset Zoom */}
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center">
-                <ZoomIn className="w-5 h-5 mr-2 text-blue-600" />
-                分析圖表
-                {zoomDomain && <span className="ml-3 text-xs font-normal text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-100">已縮放</span>}
-              </h2>
-              {zoomDomain && (
+              <h3 className={`text-xl font-bold flex items-center ${isPdfMode ? 'text-gray-900 border-l-4 border-gray-900 pl-3 font-serif' : 'text-slate-800'}`}>
+                {!isPdfMode && <ZoomIn className="w-5 h-5 mr-2 text-blue-600" />}
+                {isPdfMode ? '二、分析圖表' : '分析圖表'}
+                {zoomDomain && !isPdfMode && <span className="ml-3 text-xs font-normal text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-100">已縮放</span>}
+              </h3>
+              {zoomDomain && !isPdfMode && (
                 <button
                   onClick={resetZoom}
                   className="flex items-center space-x-1 text-xs font-medium text-slate-500 hover:text-blue-600 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-md shadow-sm"
@@ -724,9 +767,17 @@ export default function App() {
             <div className={`grid gap-4 print-break-inside-avoid ${isPdfMode ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4'}`}>
 
               {/* Deflection Chart */}
-              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-[500px] flex flex-col">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">變位圖 (mm)</h3>
-                <div className="flex-1 w-full cursor-crosshair">
+              <div className={`bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col min-w-0 overflow-hidden ${isPdfMode ? 'h-[340px]' : 'h-[500px]'}`}>
+                <div className="mb-4 flex h-16 flex-col justify-start">
+                  <h3 className="text-sm font-bold text-slate-800 text-center">變位圖 (mm)</h3>
+                  <div className="mt-2 flex items-baseline justify-center gap-2 text-center">
+                    <span className="text-xs font-medium text-blue-600 uppercase">y_max</span>
+                    <span className="text-base font-bold text-blue-700">{results.ymax.toFixed(2)}</span>
+                    <span className="text-xs text-blue-500">mm</span>
+                  </div>
+                  <p className="mt-1 text-center text-[11px] text-slate-500">發生深度 {results.ymaxDepth.toFixed(2)} m</p>
+                </div>
+                <div className="flex-1 w-full min-w-0 overflow-hidden cursor-crosshair">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       syncId="pileCharts"
@@ -799,9 +850,17 @@ export default function App() {
               </div>
 
               {/* Moment Chart */}
-              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-[500px] flex flex-col">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">彎矩圖 (T-m)</h3>
-                <div className="flex-1 w-full cursor-crosshair">
+              <div className={`bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col min-w-0 overflow-hidden ${isPdfMode ? 'h-[340px]' : 'h-[500px]'}`}>
+                <div className="mb-4 flex h-16 flex-col justify-start">
+                  <h3 className="text-sm font-bold text-slate-800 text-center">彎矩圖 (T-m)</h3>
+                  <div className="mt-2 flex items-baseline justify-center gap-2 text-center">
+                    <span className="text-xs font-medium text-rose-600 uppercase">M_max</span>
+                    <span className="text-base font-bold text-rose-700">{Math.abs(results.maxM).toFixed(1)}</span>
+                    <span className="text-xs text-rose-500">T-m</span>
+                  </div>
+                  <p className="mt-1 text-center text-[11px] text-slate-500">發生深度 {results.maxMDepth.toFixed(2)} m</p>
+                </div>
+                <div className="flex-1 w-full min-w-0 overflow-hidden cursor-crosshair">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       syncId="pileCharts"
@@ -874,9 +933,17 @@ export default function App() {
               </div>
 
               {/* Shear Chart */}
-              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-[500px] flex flex-col">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">剪力圖 (T)</h3>
-                <div className="flex-1 w-full cursor-crosshair">
+              <div className={`bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col min-w-0 overflow-hidden ${isPdfMode ? 'h-[340px]' : 'h-[500px]'}`}>
+                <div className="mb-4 flex h-16 flex-col justify-start">
+                  <h3 className="text-sm font-bold text-slate-800 text-center">剪力圖 (T)</h3>
+                  <div className="mt-2 flex items-baseline justify-center gap-2 text-center">
+                    <span className="text-xs font-medium text-emerald-600 uppercase">V_max</span>
+                    <span className="text-base font-bold text-emerald-700">{Math.abs(results.maxV).toFixed(1)}</span>
+                    <span className="text-xs text-emerald-500">T</span>
+                  </div>
+                  <p className="mt-1 text-center text-[11px] text-slate-500">發生深度 {results.maxVDepth.toFixed(2)} m</p>
+                </div>
+                <div className="flex-1 w-full min-w-0 overflow-hidden cursor-crosshair">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       syncId="pileCharts"
@@ -949,9 +1016,12 @@ export default function App() {
               </div>
 
               {/* Reinforcement Envelope Chart */}
-              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-[500px] flex flex-col">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">配筋包絡線 (cm²)</h3>
-                <div className="flex-1 w-full cursor-crosshair">
+              <div className={`bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col min-w-0 overflow-hidden ${isPdfMode ? 'h-[340px]' : 'h-[500px]'}`}>
+                <div className="mb-4 flex h-16 flex-col justify-start">
+                  <h3 className="text-sm font-bold text-slate-800 text-center">配筋包絡線 (cm²)</h3>
+                  <div className="mt-2 text-center text-[11px] text-slate-500">需求鋼筋分布與最小配筋檢核</div>
+                </div>
+                <div className="flex-1 w-full min-w-0 overflow-hidden cursor-crosshair">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       syncId="pileCharts"
@@ -982,55 +1052,72 @@ export default function App() {
               </div>
 
             </div>
+            </div>
 
             {/* Reinforcement Section */}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm print-break-inside-avoid">
-              <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center">
-                <Settings2 className="w-5 h-5 mr-2 text-slate-600" />
-                基樁斷面分析與配筋設計總表
+            <div ref={isPdfMode ? pdfPage2Ref : undefined} className={isPdfMode ? 'space-y-8' : ''}>
+            <div className={`p-6 rounded-xl border ${isPdfMode ? 'mt-12 border-gray-900 border-2 font-serif' : 'bg-white border-slate-200 shadow-sm'} print-break-inside-avoid`}>
+              <h3 className={`text-xl font-bold mb-6 flex items-center ${isPdfMode ? 'text-gray-900 border-l-4 border-gray-900 pl-3' : 'text-slate-800'}`}>
+                {!isPdfMode && <Settings2 className="w-5 h-5 mr-2 text-slate-600" />}
+                {isPdfMode ? '三、基樁斷面分析與配筋設計總表' : '基樁斷面分析與配筋設計總表'}
               </h3>
 
               <div className="space-y-8">
+                <div>
+                  <h4 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${isPdfMode ? 'text-gray-800' : 'text-slate-600'}`}>分析結果摘要</h4>
+                  <div className={`grid gap-3 ${isPdfMode ? 'grid-cols-3' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'}`}>
+                    <div className={`${isPdfMode ? 'border border-gray-900 p-3' : 'bg-slate-50 border border-slate-200 rounded-lg p-3'}`}>
+                      <p className="text-xs text-slate-500">特徵長度 β</p>
+                      <p className="mt-1 text-lg font-bold text-slate-900">{results.beta.toFixed(4)} <span className="text-xs font-normal text-slate-500">m⁻¹</span></p>
+                    </div>
+                    <div className={`${isPdfMode ? 'border border-gray-900 p-3' : 'bg-slate-50 border border-slate-200 rounded-lg p-3'}`}>
+                      <p className="text-xs text-slate-500">βL 與長樁判定</p>
+                      <p className="mt-1 text-lg font-bold text-slate-900">{results.betaL.toFixed(2)}</p>
+                      <p className="text-xs text-slate-500">{results.isLongPile ? '長樁' : '短樁'}</p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Integrated Analysis Table */}
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-3">斷面分析總表</h4>
-                  <div className={`overflow-x-auto border border-slate-200 rounded-md ${isPdfMode ? '' : 'max-h-[600px] overflow-y-auto'}`}>
-                    <table className="w-full text-sm text-left border-collapse">
-                      <thead className="text-xs text-slate-500 bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                  <h4 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${isPdfMode ? 'text-gray-800' : 'text-slate-600'}`}>斷面分析總表</h4>
+                  <div className={isPdfMode ? 'border border-gray-900 overflow-hidden' : 'overflow-x-auto border border-slate-200 rounded-md max-h-[600px] overflow-y-auto'}>
+                    <table className={`w-full text-sm text-center border-collapse ${isPdfMode ? 'text-gray-900 border-gray-900 text-[11px]' : 'text-left'}`} style={isPdfMode ? { tableLayout: 'fixed' } : {}}>
+                      <thead className={`text-xs ${isPdfMode ? 'bg-gray-100 text-gray-900 border-b-2 border-gray-900' : 'text-slate-500 bg-slate-50 border-b border-slate-200'} sticky top-0 z-10`}>
                         <tr>
-                          <th className="px-3 py-3 font-bold border-r border-slate-200 text-center">位置</th>
-                          <th className="px-3 py-3 font-bold border-r border-slate-200">深度 (m)</th>
-                          <th className="px-3 py-3 font-bold text-right border-r border-slate-200">彎矩 Mu (T-m)</th>
-                          <th className="px-3 py-3 font-bold text-right border-r border-slate-200 text-blue-700">需求 As (cm²)</th>
-                          <th className="px-3 py-3 font-bold text-right border-r border-slate-200">剪力 Vu (T)</th>
-                          <th className="px-3 py-3 font-bold text-right border-r border-slate-200">強度 φVc (T)</th>
-                          <th className="px-3 py-3 font-bold text-right">檢核 (Ratio)</th>
+                          <th className={`px-3 py-3 font-bold border-r break-words ${isPdfMode ? 'border-gray-900' : 'border-slate-200'}`}>位置</th>
+                          <th className={`px-3 py-3 font-bold border-r break-words ${isPdfMode ? 'border-gray-900' : 'border-slate-200'}`}>深度 (m)</th>
+                          <th className={`px-3 py-3 font-bold border-r break-words ${isPdfMode ? 'border-gray-900' : 'border-slate-200'}`}>變位 y (mm)</th>
+                          <th className={`px-3 py-3 font-bold border-r break-words ${isPdfMode ? 'border-gray-900' : 'border-slate-200'}`}>彎矩 Mu (T-m)</th>
+                          <th className={`px-3 py-3 font-bold border-r break-words ${isPdfMode ? 'border-gray-900' : 'border-slate-200'}`}>需求 As (cm²)</th>
+                          <th className={`px-3 py-3 font-bold border-r break-words ${isPdfMode ? 'border-gray-900' : 'border-slate-200'}`}>剪力 Vu (T)</th>
+                          <th className={`px-3 py-3 font-bold border-r break-words ${isPdfMode ? 'border-gray-900' : 'border-slate-200'}`}>強度 φVc (T)</th>
+                          <th className="px-3 py-3 font-bold break-words">檢核 (Ratio)</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-gray-200">
                         {results.reinforcementTable.map((pt, idx) => {
                           const Vu = Math.abs(pt.v) * loadFactor;
                           const ratio = Vu / pt.Vc;
                           const isSafe = ratio <= 1.0;
                           return (
-                            <tr key={idx} className={`hover:bg-slate-50 ${pt.isCritical ? 'bg-amber-50/60 font-semibold border-l-4 border-amber-400' : ''}`}>
-                              <td className="px-3 py-2 border-r border-slate-200 text-center">
+                            <tr key={idx} className={`${isPdfMode ? 'border-b border-gray-300' : 'hover:bg-slate-50'} ${pt.isCritical ? (isPdfMode ? 'bg-gray-200 font-bold' : 'bg-amber-50/60 font-semibold border-l-4 border-amber-400') : ''}`}>
+                              <td className={`px-3 py-2 border-r break-words ${isPdfMode ? 'border-gray-300' : 'border-slate-200'}`}>
                                 {pt.isCritical ? (
-                                  <span className="text-amber-600 font-bold">
-                                    {pt.name.split(' ')[0]}
-                                  </span>
+                                  <span>{pt.name.split(' ')[0]}</span>
                                 ) : (
-                                  <span className="text-slate-300">-</span>
+                                  <span className="text-gray-400">-</span>
                                 )}
                               </td>
-                              <td className="px-3 py-2 border-r border-slate-200">{pt.depth.toFixed(2)}</td>
-                              <td className="px-3 py-2 text-right border-r border-slate-200">{Math.abs(pt.m * loadFactor).toFixed(2)}</td>
-                              <td className={`px-3 py-2 text-right border-r border-slate-200 ${pt.isCritical ? 'text-blue-700' : 'text-blue-600'}`}>{pt.As.toFixed(2)}</td>
-                              <td className="px-3 py-2 text-right border-r border-slate-200">{Vu.toFixed(2)}</td>
-                              <td className="px-3 py-2 text-right border-r border-slate-200">{pt.Vc.toFixed(2)}</td>
-                              <td className="px-3 py-2 text-right">
-                                <span className={`font-medium ${isSafe ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                  {ratio.toFixed(2)}
+                              <td className={`px-3 py-2 border-r break-words ${isPdfMode ? 'border-gray-300' : 'border-slate-200'}`}>{pt.depth.toFixed(2)}</td>
+                              <td className={`px-3 py-2 border-r break-words ${isPdfMode ? 'border-gray-300' : 'border-slate-200'}`}>{pt.y.toFixed(2)}</td>
+                              <td className={`px-3 py-2 border-r break-words ${isPdfMode ? 'border-gray-300' : 'border-slate-200'}`}>{Math.abs(pt.m * loadFactor).toFixed(2)}</td>
+                              <td className={`px-3 py-2 border-r break-words ${isPdfMode ? 'border-gray-300' : 'border-slate-200'}`}>{pt.As.toFixed(2)}</td>
+                              <td className={`px-3 py-2 border-r break-words ${isPdfMode ? 'border-gray-300' : 'border-slate-200'}`}>{Vu.toFixed(2)}</td>
+                              <td className={`px-3 py-2 border-r break-words ${isPdfMode ? 'border-gray-300' : 'border-slate-200'}`}>{pt.Vc.toFixed(2)}</td>
+                              <td className="px-3 py-2 break-words">
+                                <span className={`font-medium ${isSafe ? (isPdfMode ? 'text-gray-900' : 'text-emerald-600') : (isPdfMode ? 'text-black font-bold' : 'text-rose-600')}`}>
+                                  {ratio.toFixed(2)} {isSafe ? ' (OK)' : ' (NG)'}
                                 </span>
                               </td>
                             </tr>
@@ -1039,10 +1126,12 @@ export default function App() {
                       </tbody>
                     </table>
                   </div>
-                  <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                    <p className="text-[10px] text-slate-500 leading-relaxed">
-                      註：φVc = φ * 0.53 * √fc' * bw * d。此計算僅考慮混凝土剪力強度。
-                      Mu 與 Vu 已計入載重因數 {loadFactor}。★ 符號表示關鍵斷面。
+                  <div className={`mt-4 p-3 ${isPdfMode ? 'border border-gray-900' : 'bg-slate-50 border border-slate-100 rounded-lg'}`}>
+                    <p className={`text-xs ${isPdfMode ? 'text-gray-800' : 'text-slate-500'} leading-relaxed`}>
+                      註解：<br/>
+                      1. 強度 φVc = φ * 0.53 * √fc' * bw * d。此計算僅考慮混凝土剪力強度。<br/>
+                      2. 設計彎矩 Mu 與 設計剪力 Vu 已計入載重因數 {loadFactor}。<br/>
+                      3. Ratio = Vu / φVc。檢核條件：Ratio ≤ 1.0 時為安全 (OK)。
                     </p>
                   </div>
                 </div>
@@ -1050,10 +1139,10 @@ export default function App() {
             </div>
 
             {/* Info Section */}
-            <div className="bg-blue-50 p-5 rounded-xl border border-blue-100 flex items-start space-x-3 print-break-inside-avoid">
-              <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-blue-900 space-y-2">
-                <p className="font-semibold">張有齡公式 與配筋說明</p>
+            <div className={`${isPdfMode ? 'mt-8 border border-gray-900 p-6 font-serif' : 'bg-blue-50 p-5 rounded-xl border border-blue-100 flex items-start space-x-3'} print-break-inside-avoid`}>
+              {!isPdfMode && <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />}
+              <div className={`text-sm space-y-2 ${isPdfMode ? 'text-gray-900' : 'text-blue-900'}`}>
+                <p className={`font-bold ${isPdfMode ? 'text-lg border-l-4 border-gray-900 pl-3 mb-4' : ''}`}>{isPdfMode ? '四、張有齡公式與配筋說明' : '張有齡公式 與配筋說明'}</p>
                 <p>採用張有齡公式進行基樁側向分析，假設土壤為彈性地盤且地盤反應係數 k_s 為常數。此假設常用於凝聚性土壤或工程初步設計階段。</p>
                 <ul className="list-disc pl-5 space-y-1 mt-2">
                   <li><strong>長樁判定：</strong> 當 βL &gt; 2.5 時，視為長樁，樁底邊界條件對樁頭變位影響極小。</li>
@@ -1062,6 +1151,7 @@ export default function App() {
                   <li><strong>單位系統：</strong> 內部計算統一採用公尺 與 噸，1 T = 9.81 kN。</li>
                 </ul>
               </div>
+            </div>
             </div>
 
           </div>
