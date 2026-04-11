@@ -174,6 +174,7 @@ function calculatePile(L: number, D: number, E_t_m2: number, I: number, ks: numb
     const crit = uniqueCriticalSections.find(cs => Math.abs(cs.depth - d) < 0.01);
     return {
       depth: d,
+      y: closestPt.y,
       m: closestPt.m,
       v: closestPt.v,
       As: closestPt.As,
