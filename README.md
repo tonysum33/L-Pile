@@ -10,7 +10,7 @@ View your app in AI Studio: https://ai.studio/apps/577822c9-3549-4291-922f-247cf
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js 22 (use `nvm use` in this repo)
 
 
 1. Install dependencies:
@@ -18,3 +18,5 @@ View your app in AI Studio: https://ai.studio/apps/577822c9-3549-4291-922f-247cf
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+4. Open:
+   `http://127.0.0.1:4173/`
